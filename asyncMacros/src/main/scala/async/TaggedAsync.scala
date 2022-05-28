@@ -1,32 +1,44 @@
 package com.acyclic.async
 
+import one.profiler.AsyncProfiler
 import sourcecode.Enclosing
 
+import java.util.concurrent.atomic.AtomicLong
 import scala.concurrent.{ExecutionContext, Future}
 import scala.language.experimental.macros
 import scala.reflect.macros.blackbox
 
 
 object TaggedAsync {
-
-  private val localStack = new ThreadLocal[(Long, List[Enclosing])] {
+  private val localStack = new ThreadLocal[(Long, List[Long])] {
     override def initialValue() = (0, Nil)
   }
 
-  private class RunnableWithStack(hash: Long, val stack: List[Enclosing], defer: Runnable) extends Runnable {
+  lazy val ap = AsyncProfiler.getInstance("/Users/pnf/dev/async-profiler/build/libasyncProfiler.so")
+  lazy val rwsRunId = AsyncProfiler.getMethodID(classOf[RunnableWithStack], "run", "()V")
+  val instId = new AtomicLong(0)
+
+  private class RunnableWithStack(hash: Long, val stack: List[Long], defer: Runnable) extends Runnable {
     override def run(): Unit = {
       val prev = localStack.get()
+      val signal = instId.incrementAndGet()
+      AsyncProfiler.setAwaitStackId(hash, signal, rwsRunId)
       localStack.set((hash, stack))
       defer.run()
+      if(signal == AsyncProfiler.getAwaitSampledSignal) {
+        val s = (hash :: stack).toArray
+        ap.saveAwaitFrames(0, s, s.size)
+      }
       localStack.set(prev)
     }
   }
 
   class LocalContext(parent: ExecutionContext, loc: Enclosing) extends ExecutionContext {
+    val name: Long = AsyncProfiler.saveString(loc.value)
     override def execute(runnable: Runnable): Unit = {
       val (currentHash, currentStack) = localStack.get()
       val hash = currentHash ^ loc.hashCode()
-      val stack = loc :: currentStack
+      val stack = name :: currentStack
       val r = new RunnableWithStack(hash, stack, runnable)
       parent.execute(r)
     }

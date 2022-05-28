@@ -14,7 +14,8 @@ object TaggedAsync {
     override def initialValue() = (0, Nil)
   }
 
-  lazy val ap = AsyncProfiler.getInstance("/Users/pnf/dev/async-profiler/build/libasyncProfiler.so")
+  //lazy val ap = AsyncProfiler.getInstance("/Users/pnf/dev/async-profiler/build/libasyncProfiler.so")
+  lazy val ap = AsyncProfiler.getInstance("/home/pnf/dev/async-profiler/build/libasyncProfiler.so")
   lazy val rwsRunId = AsyncProfiler.getMethodID(classOf[RunnableWithStack], "run", "()V")
   val instId = new AtomicLong(0)
 
@@ -27,7 +28,7 @@ object TaggedAsync {
       defer.run()
       if(signal == AsyncProfiler.getAwaitSampledSignal) {
         val s = (hash :: stack).toArray
-        ap.saveAwaitFrames(0, s, s.size)
+        ap.saveAwaitFrames(2, s, s.size)
       }
       localStack.set(prev)
     }

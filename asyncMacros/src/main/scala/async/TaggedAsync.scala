@@ -1,5 +1,3 @@
-package com.acyclic.async
-
 import one.profiler.AsyncProfiler
 import sourcecode.Enclosing
 
@@ -9,17 +7,16 @@ import scala.language.experimental.macros
 import scala.reflect.macros.blackbox
 
 
-object TaggedAsync {
-  private val localStack = new ThreadLocal[(Long, List[Long])] {
+package object asyncstack {
+  private val localStack = new ThreadLocal[(Long, List[(String, Long)])] {
     override def initialValue() = (0, Nil)
   }
 
-  //lazy val ap = AsyncProfiler.getInstance("/Users/pnf/dev/async-profiler/build/libasyncProfiler.so")
-  lazy val ap = AsyncProfiler.getInstance("/home/pnf/dev/async-profiler/build/libasyncProfiler.so")
-  lazy val rwsRunId = AsyncProfiler.getMethodID(classOf[RunnableWithStack], "run", "()V")
-  val instId = new AtomicLong(0)
+  lazy val apInstance = AsyncProfiler.getInstance("/home/pnf/dev/async-profiler/build/libasyncProfiler.so")
+  private lazy val rwsRunId = AsyncProfiler.getMethodID(classOf[RunnableWithStack], "run", "()V")
+  private val instId = new AtomicLong(0)
 
-  private class RunnableWithStack(hash: Long, val stack: List[Long], defer: Runnable) extends Runnable {
+  private class RunnableWithStack(hash: Long, val stack: List[(String, Long)], defer: Runnable) extends Runnable {
     override def run(): Unit = {
       val prev = localStack.get()
       val signal = instId.incrementAndGet()
@@ -27,19 +24,20 @@ object TaggedAsync {
       localStack.set((hash, stack))
       defer.run()
       if(signal == AsyncProfiler.getAwaitSampledSignal) {
-        val s = (hash :: stack).toArray
-        ap.saveAwaitFrames(2, s, s.size)
+        val s = (hash :: stack.map(_._2)).toArray
+        apInstance.saveAwaitFrames(2, s, s.size)
       }
       localStack.set(prev)
     }
   }
 
   class LocalContext(parent: ExecutionContext, loc: Enclosing) extends ExecutionContext {
-    val name: Long = AsyncProfiler.saveString(loc.value)
+    val name = loc.value
+    val id: Long = AsyncProfiler.saveString(name)
+    val (currentHash, currentStack) = localStack.get()
+    val hash = currentHash ^ loc.hashCode()
+    val stack =  (name, id) :: currentStack
     override def execute(runnable: Runnable): Unit = {
-      val (currentHash, currentStack) = localStack.get()
-      val hash = currentHash ^ loc.hashCode()
-      val stack = name :: currentStack
       val r = new RunnableWithStack(hash, stack, runnable)
       parent.execute(r)
     }
@@ -56,7 +54,7 @@ object TaggedAsync {
                                  (execContext: c.Expr[ExecutionContext], loc: c.Expr[Enclosing]): c.Expr[Future[T]]= {
     import c.universe._
     c.Expr[Future[T]](
-      q"scala.async.Async.async($body)(new com.acyclic.async.TaggedAsync.LocalContext($execContext, $loc))"
+      q"scala.async.Async.async($body)(new asyncstack.LocalContext($execContext, $loc))"
     )
   }
 }

@@ -9,11 +9,10 @@ import scala.reflect.macros.blackbox
 
 package object asyncstack {
   private val localStack = new ThreadLocal[(Long, List[(String, Long)])] {
-    override def initialValue() = (0, Nil)
+    override def initialValue = (0, Nil)
   }
-
   lazy val apInstance = AsyncProfiler.getInstance("/home/pnf/dev/async-profiler/build/libasyncProfiler.so")
-  private lazy val rwsRunId = AsyncProfiler.getMethodID(classOf[RunnableWithStack], "run", "()V")
+  private lazy val rwsRunId = AsyncProfiler.getMethodID(classOf[RunnableWithStack], "run", "()V", false)
   private val instId = new AtomicLong(0)
 
   private class RunnableWithStack(hash: Long, val stack: List[(String, Long)], defer: Runnable) extends Runnable {

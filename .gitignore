@@ -9,4 +9,7 @@ project/plugins/project/
 .lib/
 .idea/
 .bsp/
-
+.metals/
+.bloop/
+.ammonite/
+metals.sbt
